@@ -22,8 +22,17 @@ const MAIL_TO = process.env.MAIL_TO || MAIL_USER
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*'
 const SUBMISSIONS_LOG = process.env.SUBMISSIONS_LOG || path.join(process.cwd(), 'submissions.log')
 
+const ALLOWED_ORIGINS = new Set([
+  process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  'https://astrahealthmed.vercel.app'
+].filter(Boolean))
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', FRONTEND_ORIGIN)
+  const origin = req.headers.origin
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.header('Access-Control-Allow-Origin', origin)
+    res.header('Access-Control-Allow-Credentials', 'true')
+  }
   res.header('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.header('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
