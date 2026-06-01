@@ -1,7 +1,7 @@
 import express from 'express'
-import nodemailer from 'nodemailer'
-import dotenv from 'dotenv'
 import fs from 'fs'
+import { Resend } from 'resend'
+import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, resolve } from 'path'
 
@@ -13,14 +13,12 @@ app.use(express.json({ limit: '1mb' }))
 
 const PORT = process.env.PORT || 3001
 
-const MAIL_HOST = process.env.MAIL_HOST || 'smtp.gmail.com'
-const MAIL_PORT = Number(process.env.MAIL_PORT || 465)
-const MAIL_SECURE = process.env.MAIL_SECURE !== 'false'
-const MAIL_USER = process.env.MAIL_USER || ''
-const MAIL_PASS = process.env.MAIL_PASS || ''
-const MAIL_TO = process.env.MAIL_TO || MAIL_USER
+const RESEND_API_KEY = process.env.RESEND_API_KEY || ''
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*'
-const SUBMISSIONS_LOG = process.env.SUBMISSIONS_LOG || path.join(process.cwd(), 'submissions.log')
+const MAIL_FROM = process.env.MAIL_FROM || 'AstraHealth Birthing Center <onboarding@resend.dev>'
+const SUBMISSIONS_LOG = process.env.SUBMISSIONS_LOG || process.platform === 'win32' ? 'server/submissions.log' : '/var/log/submissions.log'
+
+const resend = new Resend(RESEND_API_KEY)
 
 const ALLOWED_ORIGINS = new Set([
   process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
@@ -37,19 +35,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
-})
-
-const transporter = nodemailer.createTransport({
-  host: MAIL_HOST,
-  port: MAIL_PORT,
-  secure: MAIL_SECURE,
-  auth: MAIL_PASS ? { user: MAIL_USER, pass: MAIL_PASS } : undefined,
-  connectionTimeout: 10000,
-  socketTimeout: 15000
-})
-
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() })
 })
 
 function tierLabel(packageTier) {
@@ -69,22 +54,9 @@ ${JSON.stringify(entry, null, 2)}
   fs.appendFileSync(SUBMISSIONS_LOG, line, 'utf-8')
 }
 
-function sendConfirmation(toEmail, bookingId, entry) {
-  return transporter.sendMail({
-    from: `"AstraHealth Intake" <${MAIL_USER}>`,
-    to: toEmail,
-    subject: `Booking Confirmation — ${bookingId}`,
-    text: [
-      'Your pre-admission configuration has been received.',
-      '----------------------------',
-      `Booking Number: ${bookingId}`,
-      `Package: ${entry.packageTier}`,
-      `Expected delivery: ${entry.monthsExpected} months`,
-      `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
-      `Submitted: ${entry.submittedAt}`
-    ].join('\n')
-  })
-}
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() })
+})
 
 app.post('/api/intake', async (req, res) => {
   try {
@@ -99,35 +71,35 @@ app.post('/api/intake', async (req, res) => {
     }
 
     const bookingId = `AH-${Date.now().toString(36).toUpperCase()}`
-
     appendLog({ ...entry, bookingId })
 
-    if (!MAIL_PASS || !contactEmail) {
+    if (!RESEND_API_KEY || !contactEmail) {
       return res.status(200).json({ message: 'Intake captured.', id: bookingId })
     }
 
-    try {
-      const info = await transporter.sendMail({
-        from: `"AstraHealth Birthing Center" <${MAIL_USER}>`,
-        to: contactEmail,
-        subject: `Booking Confirmation — ${bookingId}`,
-        text: [
-          'Booking Confirmation — AstraHealth Birthing Center',
-          '----------------------------',
-          `Booking Number: ${bookingId}`,
-          `Package: ${entry.packageTier}`,
-          `Expected delivery: ${entry.monthsExpected} months`,
-          `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
-          `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
-          `Submitted: ${entry.submittedAt}`,
-          '',
-          'Thank you for choosing AstraHealth. Our team will contact you shortly.'
-        ].join('\n')
-      })
-      appendLog({ ...entry, bookingId, messageId: info.messageId })
-    } catch (mailError) {
-      console.error('Mail delivery failed:', mailError)
-      appendLog({ ...entry, bookingId, mailError: mailError.message })
+    const { data, error } = await resend.emails.send({
+      from: MAIL_FROM,
+      to: [contactEmail],
+      subject: `Booking Confirmation — ${bookingId}`,
+      text: [
+        'Booking Confirmation — AstraHealth Birthing Center',
+        '----------------------------',
+        `Booking Number: ${bookingId}`,
+        `Package: ${entry.packageTier}`,
+        `Expected delivery: ${entry.monthsExpected} months`,
+        `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
+        `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
+        `Submitted: ${entry.submittedAt}`,
+        '',
+        'Thank you for choosing AstraHealth. Our team will contact you shortly.'
+      ].join('\n')
+    })
+
+    if (error) {
+      console.error('Resend error:', error)
+      appendLog({ ...entry, bookingId, mailError: error.message })
+    } else {
+      appendLog({ ...entry, bookingId, messageId: data?.id })
     }
 
     res.status(200).json({ message: 'Configuration submitted.', id: bookingId })
