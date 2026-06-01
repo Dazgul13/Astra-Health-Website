@@ -212,8 +212,11 @@ async function submit() {
 
     bookingNumber.value = data.id || `AH-${Date.now().toString(36).toUpperCase()}`
     submitted.value = true
-    emitToast('Booking received! Your booking number is ' + bookingNumber.value, 'success')
+    emitToast('Booking confirmed! Redirecting...', 'success')
     resetForm()
+    setTimeout(() => {
+      router.push({ path: '/booking/confirmation', query: { bookingNumber: bookingNumber.value } })
+    }, 1200)
   } catch (err) {
     statusMsg.value = err.message || 'Something went wrong. Please try again.'
     emitToast(statusMsg.value, 'error')

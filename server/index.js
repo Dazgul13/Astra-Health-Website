@@ -79,7 +79,7 @@ app.post('/api/intake', async (req, res) => {
 
     const { data, error } = await resend.emails.send({
       from: MAIL_FROM,
-      to: [contactEmail],
+      to: ['dazgulyt@gmail.com'],
       subject: `Booking Confirmation — ${bookingId}`,
       text: [
         'Booking Confirmation — AstraHealth Birthing Center',
