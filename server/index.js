@@ -78,24 +78,27 @@ app.post('/api/intake', async (req, res) => {
     }
 
     const adminEmails = ['dazgulyt@gmail.com']
+    const tasks = []
 
-    const tasks = [
-      resend.emails.send({
-        from: MAIL_FROM,
-        to: adminEmails,
-        subject: 'New Booking Configuration — AstraHealth Birthing Center',
-        text: [
-          'New Pre-Admission Request',
-          '----------------------------',
-          `Booking Number: ${bookingId}`,
-          `Package: ${entry.packageTier}`,
-          `Expected delivery: ${entry.monthsExpected} months`,
-          `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
-          `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
-          `Submitted: ${entry.submittedAt}`
-        ].join('\n')
-      })
-    ]
+    if (RESEND_API_KEY) {
+      tasks.push(
+        resend.emails.send({
+          from: MAIL_FROM,
+          to: adminEmails,
+          subject: 'New Booking Configuration — AstraHealth Birthing Center',
+          text: [
+            'New Pre-Admission Request',
+            '----------------------------',
+            `Booking Number: ${bookingId}`,
+            `Package: ${entry.packageTier}`,
+            `Expected delivery: ${entry.monthsExpected} months`,
+            `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
+            `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
+            `Submitted: ${entry.submittedAt}`
+          ].join('\n')
+        })
+      )
+    }
 
     if (contactEmail) {
       tasks.push(
@@ -121,10 +124,10 @@ app.post('/api/intake', async (req, res) => {
 
     const results = await Promise.allSettled(tasks)
     const failed = results.find(r => r.status === 'rejected')
-    if (failed) {
-      const err = failed.reason?.message || 'Mail delivery failed'
-      console.error('Mail error:', err)
-      appendLog({ ...entry, bookingId, mailError: err })
+    const sendErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || 'Mail delivery failed')
+    if (sendErrors.length) {
+      console.error('Mail errors:', sendErrors)
+      appendLog({ ...entry, bookingId, mailErrors: sendErrors })
     } else {
       appendLog({ ...entry, bookingId })
     }
