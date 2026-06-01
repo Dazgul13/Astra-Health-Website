@@ -186,6 +186,13 @@ function emitToast(message, type = 'success') {
   emit('toast', { message, type })
 }
 
+function validateContact() {
+  if (!form.contactEmail || !form.contactPhone) {
+    statusMsg.value = 'Please provide both email and phone number.'
+    return
+  }
+  next()
+}
 function resetForm() {
   form.packageTier = 'essentials'
   form.monthsExpected = 7
