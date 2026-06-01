@@ -43,7 +43,9 @@ const transporter = nodemailer.createTransport({
   host: MAIL_HOST,
   port: MAIL_PORT,
   secure: MAIL_SECURE,
-  auth: MAIL_PASS ? { user: MAIL_USER, pass: MAIL_PASS } : undefined
+  auth: MAIL_PASS ? { user: MAIL_USER, pass: MAIL_PASS } : undefined,
+  connectionTimeout: 10000,
+  socketTimeout: 15000
 })
 
 app.get('/api/health', (req, res) => {
@@ -104,23 +106,29 @@ app.post('/api/intake', async (req, res) => {
       return res.status(200).json({ message: 'Intake captured.', id: bookingId })
     }
 
-    const info = await transporter.sendMail({
-      from: `"AstraHealth Birthing Center" <${MAIL_USER}>`,
-      to: contactEmail,
-      subject: `Booking Confirmation — ${bookingId}`,
-      text: [
-        'Booking Confirmation — AstraHealth Birthing Center',
-        '----------------------------',
-        `Booking Number: ${bookingId}`,
-        `Package: ${entry.packageTier}`,
-        `Expected delivery: ${entry.monthsExpected} months`,
-        `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
-        `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
-        `Submitted: ${entry.submittedAt}`,
-        '',
-        'Thank you for choosing AstraHealth. Our team will contact you shortly.'
-      ].join('\n')
-    })
+    try {
+      const info = await transporter.sendMail({
+        from: `"AstraHealth Birthing Center" <${MAIL_USER}>`,
+        to: contactEmail,
+        subject: `Booking Confirmation — ${bookingId}`,
+        text: [
+          'Booking Confirmation — AstraHealth Birthing Center',
+          '----------------------------',
+          `Booking Number: ${bookingId}`,
+          `Package: ${entry.packageTier}`,
+          `Expected delivery: ${entry.monthsExpected} months`,
+          `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
+          `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
+          `Submitted: ${entry.submittedAt}`,
+          '',
+          'Thank you for choosing AstraHealth. Our team will contact you shortly.'
+        ].join('\n')
+      })
+      appendLog({ ...entry, bookingId, messageId: info.messageId })
+    } catch (mailError) {
+      console.error('Mail delivery failed:', mailError)
+      appendLog({ ...entry, bookingId, mailError: mailError.message })
+    }
 
     res.status(200).json({ message: 'Configuration submitted.', id: bookingId })
   } catch (error) {
