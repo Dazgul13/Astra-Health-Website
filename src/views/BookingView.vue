@@ -200,13 +200,17 @@ function resetForm() {
 async function submit() {
   statusMsg.value = ''
   loading.value = true
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 45000)
   try {
     const apiUrl = import.meta.env.VITE_API_URL || '/api/intake'
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload.value)
+      body: JSON.stringify(payload.value),
+      signal: controller.signal
     })
+    clearTimeout(timeout)
     const data = await res.json()
     if (!res.ok) throw new Error(data.message || 'Submission failed')
 
@@ -218,8 +222,10 @@ async function submit() {
       router.push({ path: '/booking/confirmation', query: { bookingNumber: bookingNumber.value } })
     }, 1200)
   } catch (err) {
-    statusMsg.value = err.message || 'Something went wrong. Please try again.'
-    emitToast(statusMsg.value, 'error')
+    clearTimeout(timeout)
+    const message = err.name === 'AbortError' ? 'Request timed out. Please try again or check back in a minute.' : (err.message || 'Something went wrong. Please try again.')
+    statusMsg.value = message
+    emitToast(message, 'error')
   } finally {
     loading.value = false
   }
