@@ -73,58 +73,58 @@ app.post('/api/intake', async (req, res) => {
     const bookingId = `AH-${Date.now().toString(36).toUpperCase()}`
     appendLog({ ...entry, bookingId })
 
-    if (!RESEND_API_KEY || !contactEmail) {
+    if (!RESEND_API_KEY) {
+      console.warn('Missing RESEND_API_KEY; skipping email send')
       return res.status(200).json({ message: 'Intake captured.', id: bookingId })
     }
 
     const adminEmails = ['dazgulyt@gmail.com']
+    const emailPayloads = []
 
-    const tasks = [
-      resend.emails.send({
+    emailPayloads.push({
+      from: MAIL_FROM,
+      to: adminEmails,
+      subject: 'New Booking Configuration — AstraHealth Birthing Center',
+      text: [
+        'New Pre-Admission Request',
+        '----------------------------',
+        `Booking Number: ${bookingId}`,
+        `Package: ${entry.packageTier}`,
+        `Expected delivery: ${entry.monthsExpected} months`,
+        `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
+        `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
+        `Submitted: ${entry.submittedAt}`
+      ].join('\n')
+    })
+
+    if (contactEmail) {
+      emailPayloads.push({
         from: MAIL_FROM,
-        to: adminEmails,
-        subject: 'New Booking Configuration — AstraHealth Birthing Center',
+        to: [contactEmail, ...adminEmails],
+        subject: `Booking Confirmation — ${bookingId}`,
         text: [
-          'New Pre-Admission Request',
+          'Booking Confirmation — AstraHealth Birthing Center',
           '----------------------------',
           `Booking Number: ${bookingId}`,
           `Package: ${entry.packageTier}`,
           `Expected delivery: ${entry.monthsExpected} months`,
           `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
           `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
-          `Submitted: ${entry.submittedAt}`
+          `Submitted: ${entry.submittedAt}`,
+          '',
+          'Thank you for choosing AstraHealth. Our team will contact you shortly.'
         ].join('\n')
       })
-    ]
-
-    if (contactEmail) {
-      tasks.push(
-        resend.emails.send({
-          from: MAIL_FROM,
-          to: [contactEmail, ...adminEmails],
-          subject: `Booking Confirmation — ${bookingId}`,
-          text: [
-            'Booking Confirmation — AstraHealth Birthing Center',
-            '----------------------------',
-            `Booking Number: ${bookingId}`,
-            `Package: ${entry.packageTier}`,
-            `Expected delivery: ${entry.monthsExpected} months`,
-            `Enhancements: ${entry.enhancements.join(', ') || 'None'}`,
-            `Contact: ${entry.contactEmail || 'N/A'} / ${entry.contactPhone || 'N/A'}`,
-            `Submitted: ${entry.submittedAt}`,
-            '',
-            'Thank you for choosing AstraHealth. Our team will contact you shortly.'
-          ].join('\n')
-        })
-      )
     }
 
-    const results = await Promise.allSettled(tasks)
-    const failed = results.find(r => r.status === 'rejected')
-    if (failed) {
-      const err = failed.reason?.message || 'Mail delivery failed'
-      console.error('Mail error:', err)
-      appendLog({ ...entry, bookingId, mailError: err })
+    const results = emailPayloads.map(p => resend.emails.send(p))
+    const settled = await Promise.allSettled(results)
+    const failed = settled.filter(r => r.status === 'rejected')
+
+    if (failed.length) {
+      const errors = failed.map(r => r.reason?.message || 'Mail delivery failed')
+      console.error('Mail errors:', errors)
+      appendLog({ ...entry, bookingId, mailErrors: errors })
     } else {
       appendLog({ ...entry, bookingId })
     }
