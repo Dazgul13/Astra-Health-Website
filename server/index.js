@@ -78,7 +78,7 @@ app.post('/api/intake', async (req, res) => {
       return res.status(200).json({ message: 'Intake captured.', id: bookingId })
     }
 
-    const adminEmails = ['dazgulyt@gmail.com']
+    const adminEmails = ['arjuna.espinosa13@gmail.com']
     const emailPayloads = []
 
     emailPayloads.push({
